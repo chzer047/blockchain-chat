@@ -1,3 +1,4 @@
+import hashlib
 import html
 import time
 from datetime import datetime
@@ -23,50 +24,121 @@ st.set_page_config(
 st.markdown("""
 <style>
 [data-testid="stSidebar"] { min-width: 290px; max-width: 320px; }
+[data-testid="stForm"]    { border: none !important; padding: 0 !important; }
 
-.chat-box {
-    background: #0e0e0e;
-    border: 1px solid #222;
-    border-radius: 14px;
-    padding: 20px 16px;
-    min-height: 440px;
-    overflow-y: auto;
+/* Container principal do chat */
+.chat-wrapper {
+    position: relative;
+    height: 540px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #0b141a;
 }
 
-.bubble-own {
-    background: #1a73e8;
-    color: #fff;
-    border-radius: 18px 18px 4px 18px;
-    padding: 10px 15px;
-    margin: 4px 0 2px;
-    max-width: 68%;
+/* Marca d'água GAT VI */
+.chat-bg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 0;
+}
+.chat-bg-text {
+    font-size: 80px;
+    font-weight: 900;
+    font-family: 'Arial Black', Arial, sans-serif;
+    color: rgba(255,255,255,0.035);
+    letter-spacing: 10px;
+    transform: rotate(-25deg);
+    white-space: nowrap;
+    user-select: none;
+}
+
+/* Área de scroll das mensagens */
+.chat-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    padding: 10px 12px 16px;
+    z-index: 1;
+    scroll-behavior: smooth;
+}
+
+/* Clearfix */
+.chat-scroll::after { content: ""; display: table; clear: both; }
+
+/* Bolhas — próprias */
+.bown {
+    background: #005c4b;
+    color: #e9edef;
+    border-radius: 7.5px 7.5px 0 7.5px;
+    padding: 6px 9px 22px 9px;
+    margin: 2px 0;
+    max-width: 67%;
     float: right;
     clear: both;
     word-wrap: break-word;
-    line-height: 1.45;
+    line-height: 1.5;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 
-.bubble-other {
-    background: #1e1e1e;
-    color: #ddd;
-    border: 1px solid #2a2a2a;
-    border-radius: 18px 18px 18px 4px;
-    padding: 10px 15px;
-    margin: 4px 0 2px;
-    max-width: 68%;
+/* Bolhas — outros */
+.both {
+    background: #1f2c34;
+    color: #e9edef;
+    border-radius: 7.5px 7.5px 7.5px 0;
+    padding: 6px 9px 22px 9px;
+    margin: 2px 0;
+    max-width: 67%;
     float: left;
     clear: both;
     word-wrap: break-word;
-    line-height: 1.45;
+    line-height: 1.5;
+    position: relative;
+    box-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 
-.meta-own   { font-size: 11px; color: #666; text-align: right; clear: both; margin-bottom: 10px; padding-right: 4px; }
-.meta-other { font-size: 11px; color: #666; text-align: left;  clear: both; margin-bottom: 10px; padding-left: 4px; }
+/* Nickname dentro da bolha */
+.bnick {
+    font-size: 12.5px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
 
-.nick-label { font-weight: 600; color: #aaa; font-size: 12px; }
-.sig-ok     { color: #4caf50; }
-.sig-bad    { color: #f44336; }
+/* Rodapé da bolha: hora + tick (canto inferior direito) */
+.bfoot {
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+    font-size: 10.5px;
+    color: rgba(233,237,239,0.55);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+.tick-ok  { color: #53bdeb; }
+.tick-bad { color: #f56a6a; }
 
+/* Separador de data */
+.date-sep {
+    text-align: center;
+    margin: 10px 0 6px;
+    clear: both;
+    font-size: 11.5px;
+    color: #8696a0;
+}
+.date-sep span {
+    background: #182229;
+    border-radius: 8px;
+    padding: 3px 10px;
+}
+
+/* Carteira */
 .wallet-box {
     font-family: monospace;
     font-size: 12px;
@@ -79,6 +151,7 @@ st.markdown("""
     word-break: break-all;
 }
 
+/* Badge da sala */
 .room-badge {
     font-family: monospace;
     font-size: 12px;
@@ -89,12 +162,18 @@ st.markdown("""
     padding: 3px 10px;
 }
 
-.entry-card {
-    max-width: 460px;
-    margin: 40px auto;
-}
+/* Entrada */
+.entry-card { max-width: 440px; margin: 40px auto; }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ─── Cores por carteira (estilo WhatsApp grupo) ────────────────────────────────
+_CORES_NICK = ["#53bdeb", "#ec7228", "#bf59cf", "#06cf9c", "#f0a732", "#f56a6a", "#3fc4a0"]
+
+def cor_nick(wallet: str) -> str:
+    idx = int(hashlib.md5(wallet.encode()).hexdigest(), 16) % len(_CORES_NICK)
+    return _CORES_NICK[idx]
 
 
 # ─── Session state ─────────────────────────────────────────────────────────────
@@ -108,8 +187,7 @@ for key, default in [("room_code", ""), ("nickname", ""), ("na_sala", False)]:
     if key not in st.session_state:
         st.session_state[key] = default
 
-# Suporte a ?room= na URL para compartilhar sala via link
-params = st.query_params
+params   = st.query_params
 room_url = params.get("room", "")
 
 
@@ -126,7 +204,7 @@ with st.sidebar:
     )
     if st.session_state.nickname:
         st.caption(f"Apelido: **{st.session_state.nickname}**")
-    st.caption("Endereço gerado a partir da sua chave — sem nome real")
+    st.caption("Endereço anônimo — sem nome real")
 
     st.divider()
     st.markdown("**Identidade persistente**")
@@ -158,11 +236,7 @@ with st.sidebar:
             st.error("Arquivo inválido.")
 
     st.divider()
-    st.caption(
-        "🔒 AES-256-GCM · RSA-2048 PSS\n\n"
-        "Nickname cifrado — invisível sem o código de sala.\n"
-        "Sem servidor central. Sem metadados de identidade."
-    )
+    st.caption("🔒 AES-256-GCM · RSA-2048-PSS\nSem servidor central.")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -171,7 +245,6 @@ st.markdown("## 💬 Chat Seguro")
 if not st.session_state.na_sala:
     # ── Tela de entrada ────────────────────────────────────────────────────────
     st.markdown('<div class="entry-card">', unsafe_allow_html=True)
-
     st.markdown("### Entrar na sala")
 
     nick = st.text_input(
@@ -179,18 +252,14 @@ if not st.session_state.na_sala:
         value=st.session_state.nickname,
         placeholder="Ex: Carlos, Ana, Dev01…",
         max_chars=32,
-        help="Visível apenas para quem está na mesma sala (cifrado).",
     )
-
     room_default = room_url or st.session_state.room_code
     codigo = st.text_input(
         "Código da sala",
         value=room_default,
         type="password",
-        placeholder="Código combinado com sua equipe",
-        help="Mínimo 8 caracteres. É a chave de criptografia — compartilhe fora deste app.",
+        placeholder="Código combinado com sua equipe (mín. 8 chars)",
     )
-
     entrar = st.button("Entrar →", type="primary", use_container_width=True)
 
     if entrar:
@@ -206,23 +275,12 @@ if not st.session_state.na_sala:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
     with st.expander("ℹ️ Como funciona"):
         st.markdown("""
-**O que é criptografado:**
-- ✅ Texto da mensagem (AES-256-GCM)
-- ✅ Seu apelido (também cifrado com a chave da sala)
-- ✅ Somente quem tem o código da sala consegue ler qualquer coisa
-
-**O que fica no blockchain:**
-- Endereço de carteira (hash anônimo, sem nome real)
-- Horário do bloco
-- Dados cifrados (ilegíveis sem o código)
-- Hash encadeado + assinatura (garante integridade)
-
-**Compartilhar sala:**
-- Envie o código de sala por WhatsApp, Signal, pessoalmente
-- Ou compartilhe o link `?room=CODIGO` — quem abrir ainda precisa do código
+- **Apelido e mensagens** são cifrados — só quem tem o código da sala lê
+- Identidade = hash anônimo da chave pública (sem nome real)
+- Blockchain local: hash encadeado + assinatura garantem integridade
+- Compartilhe o código de sala por WhatsApp ou pessoalmente
         """)
 
 else:
@@ -231,6 +289,7 @@ else:
     meu_wallet = st.session_state.wallet
     meu_nick   = st.session_state.nickname
 
+    # Cabeçalho
     col_titulo, col_share, col_sair = st.columns([4, 2, 1])
     with col_titulo:
         sala_mask = "*" * max(4, len(room) - 4) + room[-4:]
@@ -239,10 +298,9 @@ else:
             unsafe_allow_html=True,
         )
     with col_share:
-        share_url = f"?room={room}"
         st.markdown(
-            f'<a href="{share_url}" target="_blank" style="font-size:12px;color:#555;">'
-            f'🔗 Link da sala</a>',
+            f'<a href="?room={html.escape(room)}" target="_blank" '
+            f'style="font-size:12px;color:#555;">🔗 Link da sala</a>',
             unsafe_allow_html=True,
         )
     with col_sair:
@@ -252,70 +310,92 @@ else:
             st.rerun()
 
     stats = info_sala(room)
-    st.caption(f"⛓️ Altura: **{stats['altura']}** · Mensagens: **{stats['mensagens']}**")
+    st.caption(f"⛓️ {stats['altura']} blocos · {stats['mensagens']} mensagens")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── Mensagens ──────────────────────────────────────────────────────────────
-    mensagens = ler_mensagens(room)
+    mensagens  = ler_mensagens(room)
+    data_atual = None
 
-    partes = ['<div class="chat-box">']
+    partes = [
+        '<div class="chat-wrapper">',
+        '  <div class="chat-bg"><span class="chat-bg-text">GAT VI</span></div>',
+        '  <div class="chat-scroll" id="chatscroll">',
+    ]
 
     if not mensagens:
         partes.append(
-            '<p style="color:#444;text-align:center;margin-top:160px;">'
-            '🔒 Sala vazia.<br>Envie a primeira mensagem.</p>'
+            '<p style="color:#3a4a55;text-align:center;margin-top:200px;font-size:14px;">'
+            '🔒 Sala vazia — envie a primeira mensagem</p>'
         )
     else:
         for m in mensagens:
-            eh_meu    = m["sender"] == meu_wallet
-            ts_fmt    = datetime.fromtimestamp(m["timestamp"]).strftime("%d/%m %H:%M")
-            nome_exib = html.escape(m["nickname"]) if m["nickname"] else (m["sender"][:8] + "…")
-            sig_html  = '<span class="sig-ok">✓</span>' if m["valido"] else '<span class="sig-bad">✗</span>'
-            txt_safe  = html.escape(m["texto"])
+            eh_meu = m["sender"] == meu_wallet
+            dt     = datetime.fromtimestamp(m["timestamp"])
+            data_d = dt.strftime("%d/%m/%Y")
+            hora   = dt.strftime("%H:%M")
+
+            # Separador de data
+            if data_d != data_atual:
+                data_atual = data_d
+                partes.append(f'<div class="date-sep"><span>{data_d}</span></div>')
+
+            txt_safe = html.escape(m["texto"])
+            tick     = '<span class="tick-ok">✓✓</span>' if m["valido"] else '<span class="tick-bad">✗</span>'
 
             if eh_meu:
-                partes.append(f'<div class="bubble-own">{txt_safe}</div>')
                 partes.append(
-                    f'<div class="meta-own">'
-                    f'<span class="nick-label">{html.escape(meu_nick)}</span> · {ts_fmt} · {sig_html}'
+                    f'<div class="bown">'
+                    f'{txt_safe}'
+                    f'<div class="bfoot">{hora} {tick}</div>'
                     f'</div>'
                 )
             else:
-                partes.append(f'<div class="bubble-other">{txt_safe}</div>')
+                nome   = html.escape(m["nickname"]) if m["nickname"] else (m["sender"][:8] + "…")
+                cor    = cor_nick(m["sender"])
                 partes.append(
-                    f'<div class="meta-other">'
-                    f'<span class="nick-label">{nome_exib}</span> · {ts_fmt} · {sig_html}'
+                    f'<div class="both">'
+                    f'<div class="bnick" style="color:{cor};">{nome}</div>'
+                    f'{txt_safe}'
+                    f'<div class="bfoot">{hora}</div>'
                     f'</div>'
                 )
 
-    partes.append('</div>')
+    partes.append('  </div>')  # fecha chat-scroll
+    partes.append('</div>')    # fecha chat-wrapper
+
+    # Scroll para o fim (com pequeno delay para garantir render)
     partes.append("""
 <script>
-(function(){
-    var boxes = document.querySelectorAll('.chat-box');
-    if(boxes.length){ var b=boxes[boxes.length-1]; b.scrollTop=b.scrollHeight; }
+(function scroll(){
+    var el = document.getElementById('chatscroll');
+    if(!el){ setTimeout(scroll, 80); return; }
+    el.scrollTop = el.scrollHeight;
 })();
 </script>""")
 
     st.markdown("".join(partes), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Enviar mensagem ────────────────────────────────────────────────────────
-    col_msg, col_btn, col_upd = st.columns([6, 1, 1])
-
-    with col_msg:
-        texto = st.text_input(
-            "msg",
-            placeholder="Digite sua mensagem…",
-            label_visibility="collapsed",
-            key="msg_input",
-        )
-    with col_btn:
-        enviar = st.button("Enviar", type="primary", use_container_width=True)
+    # ── Enviar (Enter ou botão) ────────────────────────────────────────────────
+    col_upd, col_auto = st.columns([1, 3])
     with col_upd:
-        if st.button("🔄", use_container_width=True, help="Atualizar"):
+        if st.button("🔄 Atualizar", use_container_width=True):
             st.rerun()
+    with col_auto:
+        auto = st.checkbox("Auto-atualizar (5s)")
+
+    with st.form(key="msg_form", clear_on_submit=True):
+        col_msg, col_btn = st.columns([8, 1])
+        with col_msg:
+            texto = st.text_input(
+                "msg",
+                placeholder="Digite sua mensagem e pressione Enter…",
+                label_visibility="collapsed",
+            )
+        with col_btn:
+            enviar = st.form_submit_button("Enviar", type="primary", use_container_width=True)
 
     if enviar and texto.strip():
         try:
@@ -331,9 +411,6 @@ else:
             st.error(f"Erro ao enviar: {e}")
         st.rerun()
 
-    # ── Auto-atualizar ─────────────────────────────────────────────────────────
-    with st.expander("⚙️ Auto-atualizar"):
-        auto = st.checkbox("Atualizar a cada 5 segundos")
-        if auto:
-            time.sleep(5)
-            st.rerun()
+    if auto:
+        time.sleep(5)
+        st.rerun()
