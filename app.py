@@ -1,7 +1,9 @@
+import base64
 import hashlib
 import html
 import time
 from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 
@@ -26,13 +28,14 @@ st.markdown("""
 [data-testid="stSidebar"] { min-width: 290px; max-width: 320px; }
 [data-testid="stForm"]    { border: none !important; padding: 0 !important; }
 
-/* Container principal do chat */
+/* Container principal do chat — background injetado via Python */
 .chat-wrapper {
     position: relative;
     height: 540px;
     border-radius: 12px;
     overflow: hidden;
     background: #0b141a;
+    /* background-image e background-size são injetados inline */
 }
 
 /* Marca d'água GAT VI */
@@ -65,6 +68,8 @@ st.markdown("""
     padding: 10px 12px 16px;
     z-index: 1;
     scroll-behavior: smooth;
+    /* overlay escuro quando há imagem de fundo, para legibilidade */
+    background: rgba(11,20,26,0.55);
 }
 
 /* Clearfix */
@@ -166,6 +171,26 @@ st.markdown("""
 .entry-card { max-width: 440px; margin: 40px auto; }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ─── Background image ─────────────────────────────────────────────────────────
+
+def _bg_style() -> str:
+    """Retorna CSS de background: imagem base64 se existir, cor sólida caso contrário."""
+    for nome in ("background.jpg", "background.jpeg", "background.png"):
+        p = Path(nome)
+        if p.exists():
+            ext  = p.suffix.lstrip(".").replace("jpg", "jpeg")
+            b64  = base64.b64encode(p.read_bytes()).decode()
+            return (
+                f"background-image:url('data:image/{ext};base64,{b64}');"
+                "background-size:cover;background-position:center top;"
+            )
+    return "background:#0b141a;"
+
+
+_BG = _bg_style()
+_TEM_BG = "background-image" in _BG
 
 
 # ─── Cores por carteira (estilo WhatsApp grupo) ────────────────────────────────
@@ -318,9 +343,10 @@ else:
     mensagens  = ler_mensagens(room)
     data_atual = None
 
+    watermark = '' if _TEM_BG else '  <div class="chat-bg"><span class="chat-bg-text">GAT VI</span></div>'
     partes = [
-        '<div class="chat-wrapper">',
-        '  <div class="chat-bg"><span class="chat-bg-text">GAT VI</span></div>',
+        f'<div class="chat-wrapper" style="{_BG}">',
+        watermark,
         '  <div class="chat-scroll" id="chatscroll">',
     ]
 
