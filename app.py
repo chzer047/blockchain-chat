@@ -177,10 +177,10 @@ st.markdown("""
 
 def _bg_style() -> str:
     """Retorna CSS de background: imagem base64 se existir, cor sólida caso contrário."""
-    for nome in ("background.jpg", "background.jpeg", "background.png"):
+    for nome in ("background.jpg", "background.jpeg", "background.jfif", "background.png"):
         p = Path(nome)
         if p.exists():
-            ext  = p.suffix.lstrip(".").replace("jpg", "jpeg")
+            ext  = p.suffix.lstrip(".").replace("jpg", "jpeg").replace("jfif", "jpeg")
             b64  = base64.b64encode(p.read_bytes()).decode()
             return (
                 f"background-image:url('data:image/{ext};base64,{b64}');"
